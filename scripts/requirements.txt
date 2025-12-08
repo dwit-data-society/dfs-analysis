@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 altair==5.5.0
 attrs==25.4.0
 blinker==1.9.0
@@ -35,3 +36,9 @@ tornado==6.5.2
 typing_extensions==4.15.0
 tzdata==2025.2
 urllib3==2.6.0
+=======
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.14.0
+>>>>>>> createSubmodules
