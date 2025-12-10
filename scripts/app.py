@@ -356,7 +356,7 @@ except Exception as e:
     st.stop()
 
 # Sidebar filters
-st.sidebar.title("📊 Dashboard Filters")
+st.sidebar.title("Dashboard Filters")
 
 # Date range filter (handle empty data case)
 if not df.empty and df['created_at'].notna().any():
