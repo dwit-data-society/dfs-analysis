@@ -16,7 +16,7 @@ class UIComponents:
     def render_header():
         """Render dashboard header"""
         st.markdown(
-            '<h1 class="main-title">🍜 Deerwalk Food System Analytics</h1>',
+            '<h1 class="main-title"> Deerwalk Food System Analytics</h1>',
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -30,7 +30,7 @@ class UIComponents:
             <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
                         border-radius: 10px; margin-bottom: 2rem;'>
                 <p style='margin: 0; color: #666; font-size: 0.9rem;'>
-                    📅 Dashboard Updated: {current_date}
+                     Dashboard Updated: {current_date}
                 </p>
             </div>
         """,
@@ -40,7 +40,7 @@ class UIComponents:
     @staticmethod
     def render_metrics(df: pd.DataFrame, delivery_stats: dict):
         """Render key metrics"""
-        st.markdown("### 📊 Key Performance Indicators")
+        st.markdown("###  Key Performance Indicators")
 
         col1, col2, col3, col4 = st.columns(4)
 
@@ -82,11 +82,11 @@ class UIComponents:
     def render_sidebar(top_n: int, min_support: int):
         """Render sidebar controls"""
         with st.sidebar:
-            st.markdown("## ⚙️ Dashboard Settings")
+            st.markdown("##  Dashboard Settings")
             st.markdown("---")
 
             top_n = st.slider(
-                "🏆 Top items to display",
+                " Top items to display",
                 min_value=5,
                 max_value=20,
                 value=top_n,
@@ -94,7 +94,7 @@ class UIComponents:
             )
 
             min_support = st.slider(
-                "🔗 Min co-occurrences",
+                " Min co-occurrences",
                 min_value=2,
                 max_value=10,
                 value=min_support,
@@ -104,7 +104,7 @@ class UIComponents:
 
             st.markdown("---")
 
-            if st.button("🔄 Refresh Data"):
+            if st.button(" Refresh Data"):
                 st.cache_data.clear()
                 st.rerun()
 
@@ -133,7 +133,7 @@ class UIComponents:
             <div style='text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
                         border-radius: 10px; margin-top: 3rem;'>
                 <p style='margin: 0; color: #666; font-size: 0.9rem;'>
-                    🍜 Deerwalk Food System Analytics Dashboard | Built with Streamlit & Python
+                     Deerwalk Food System Analytics Dashboard | Built with Streamlit & Python
                 </p>
             </div>
         """,
@@ -143,51 +143,51 @@ class UIComponents:
     @staticmethod
     def render_top_items_section(top_items: pd.DataFrame, n: int):
         """Render top items section with chart and table"""
-        st.markdown(f"### 🏆 Top {n} Items by Revenue")
+        st.markdown(f"###  Top {n} Items by Revenue")
         Charts.render_top_items_chart(top_items, n)
 
-        with st.expander("📋 View Data Table"):
+        with st.expander(" View Data Table"):
             Tables.render_top_items_table(top_items)
 
     @staticmethod
     def render_status_section(status_counts: pd.Series):
         """Render status section with chart and table"""
-        st.markdown("### 📦 Order Status Distribution")
+        st.markdown("###  Order Status Distribution")
         Charts.render_status_pie_chart(status_counts)
 
-        with st.expander("📋 View Status Breakdown"):
+        with st.expander(" View Status Breakdown"):
             Tables.render_status_breakdown_table(status_counts)
 
     @staticmethod
     def render_fulfillment_section(fulfillment_df: pd.DataFrame, stats: dict):
         """Render fulfillment analysis section"""
-        st.markdown("### ⏱️ Order Fulfillment Time Analysis")
+        st.markdown("### Order Fulfillment Time Analysis")
 
         if fulfillment_df.empty or not stats:
             st.info(
-                "⚠️ Fulfillment time data not available. Requires 'created_at' and 'updated_at' columns."
+                " Fulfillment time data not available. Requires 'created_at' and 'updated_at' columns."
             )
             return
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("⚡ Avg Fulfillment", f"{stats['avg_hours']:.1f} hrs")
+            st.metric(" Avg Fulfillment", f"{stats['avg_hours']:.1f} hrs")
         with col2:
-            st.metric("📊 Median Time", f"{stats['median_hours']:.1f} hrs")
+            st.metric(" Median Time", f"{stats['median_hours']:.1f} hrs")
         with col3:
-            st.metric("🚀 Fastest", f"{stats['min_hours']:.1f} hrs")
+            st.metric(" Fastest", f"{stats['min_hours']:.1f} hrs")
         with col4:
-            st.metric("🐌 Slowest", f"{stats['max_hours']:.1f} hrs")
+            st.metric(" Slowest", f"{stats['max_hours']:.1f} hrs")
 
         Charts.render_fulfillment_histogram(fulfillment_df)
 
     @staticmethod
     def render_peak_times_section(hourly: pd.DataFrame, daily: pd.DataFrame):
         """Render peak times section"""
-        st.markdown("### 🕐 Peak Order Times")
+        st.markdown("###  Peak Order Times")
 
         if hourly.empty or daily.empty:
-            st.info("⚠️ Peak times data not available. Requires 'created_at' column.")
+            st.info(" Peak times data not available. Requires 'created_at' column.")
             return
 
         col1, col2 = st.columns(2)
@@ -201,17 +201,17 @@ class UIComponents:
     @staticmethod
     def render_trends_section(trends: pd.DataFrame):
         """Render trends section"""
-        st.markdown("### 📈 Daily Trends")
+        st.markdown("###  Daily Trends")
 
         if trends.empty:
-            st.info("⚠️ Trends data not available. Requires 'created_at' column.")
+            st.info(" Trends data not available. Requires 'created_at' column.")
             return
 
         Charts.render_daily_order_volume(trends)
         Charts.render_daily_revenue(trends)
         Charts.render_avg_order_value(trends)
 
-        with st.expander("📊 View Trend Statistics"):
+        with st.expander(" View Trend Statistics"):
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Avg Daily Orders", f"{trends['order_count'].mean():.0f}")
@@ -225,16 +225,16 @@ class UIComponents:
     @staticmethod
     def render_sales_revenue_section(monthly_df: pd.DataFrame, growth_df: pd.DataFrame):
         """Render sales & revenue analysis section"""
-        st.markdown("## 💰 Sales & Revenue Analysis")
+        st.markdown("##  Sales & Revenue Analysis")
 
         if monthly_df.empty:
-            st.info("⚠️ Monthly sales data not available. Requires 'created_at' column.")
+            st.info(" Monthly sales data not available. Requires 'created_at' column.")
             return
 
         st.markdown("### Monthly Revenue Trend")
         Charts.render_monthly_revenue_trend(monthly_df)
 
-        st.markdown("### 🏅 Peak Sales Performance")
+        st.markdown("###  Peak Sales Performance")
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Top 5 Months by Revenue**")
@@ -244,7 +244,7 @@ class UIComponents:
             Tables.render_top_months_orders_table(monthly_df)
 
         if not growth_df.empty:
-            st.markdown("### 📊 Revenue Growth Rate")
+            st.markdown("###  Revenue Growth Rate")
 
             recent_growth = (
                 growth_df["revenue_growth_rate"].iloc[-1] if len(growth_df) > 1 else 0
@@ -268,13 +268,13 @@ class UIComponents:
             Charts.render_revenue_growth_rate(growth_df)
             Charts.render_revenue_and_growth_combined(growth_df)
 
-            with st.expander("📋 View Monthly Growth Details"):
+            with st.expander(" View Monthly Growth Details"):
                 Tables.render_growth_details_table(growth_df)
 
     @staticmethod
     def render_menu_categories_section(categories_df: pd.DataFrame):
         """Render menu categories section"""
-        st.subheader("🍽️ Menu Category Performance")
+        st.subheader(" Menu Category Performance")
 
         if categories_df.empty:
             st.info("Category data not available. Requires 'menu_id' column.")
@@ -302,7 +302,7 @@ class UIComponents:
     @staticmethod
     def render_cross_selling_section(pairs_df: pd.DataFrame):
         """Render cross-selling section"""
-        st.subheader("🔗 Cross-Selling Opportunities")
+        st.subheader(" Cross-Selling Opportunities")
 
         if pairs_df.empty:
             st.info(
@@ -330,7 +330,7 @@ class UIComponents:
     @staticmethod
     def render_lifecycle_section(lifecycle_df: pd.DataFrame, summary: dict):
         """Render menu lifecycle section"""
-        st.subheader("🌱 Menu Item Lifecycle Analysis")
+        st.subheader(" Menu Item Lifecycle Analysis")
 
         if lifecycle_df.empty or not summary:
             st.info("Lifecycle data not available. Requires 'created_at' column.")
