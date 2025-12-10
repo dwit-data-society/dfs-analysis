@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 # Page configuration must be first Streamlit command
 st.set_page_config(
     page_title="Deerwalk Food System Analytics",
-    page_icon="🍜",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -84,7 +83,7 @@ def main():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Revenue & Status Overview
-    st.markdown("## 📊 Revenue & Status Overview")
+    st.markdown("## Revenue & Status Overview")
     col1, col2 = st.columns([2, 1])
     with col1:
         UIComponents.render_top_items_section(top_items, top_n)
@@ -93,7 +92,7 @@ def main():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Operational Metrics
-    st.markdown("## ⚡ Operational Metrics")
+    st.markdown("## Operational Metrics")
     UIComponents.render_fulfillment_section(fulfillment_df, fulfillment_stats)
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -104,7 +103,7 @@ def main():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Menu Intelligence
-    st.markdown("## 🔍 Menu Intelligence")
+    st.markdown("## Menu Intelligence")
     UIComponents.render_menu_categories_section(categories_df)
     st.markdown("<br>", unsafe_allow_html=True)
 
