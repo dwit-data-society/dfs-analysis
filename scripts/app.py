@@ -8,7 +8,7 @@ import numpy as np
 # Page config
 st.set_page_config(page_title="Canteen Performance Analysis", layout="wide", initial_sidebar_state="collapsed")
 
-# Custom CSS for Reuters/Economist style
+# Custom CSS for style
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Merriweather:wght@300;400;700&display=swap');
