@@ -183,29 +183,29 @@ def calculate_churn_rate(df, period_days=30):
     """
     if df.empty or 'user_wallet_id' not in df.columns:
         return None, None, None
-    
+
     # Get the most recent date in the dataset
     max_date = df['created_at'].max()
     period_start = max_date - timedelta(days=period_days)
-    
+
     # Customers active before the period
     pre_period = df[df['created_at'] < period_start]
     active_before = set(pre_period['user_wallet_id'].unique())
-    
+
     # Customers active during the period
     during_period = df[(df['created_at'] >= period_start) & (df['created_at'] <= max_date)]
     active_during = set(during_period['user_wallet_id'].unique())
-    
+
     # Lost customers (active before but not during)
     lost_customers = active_before - active_during
-    
+
     churn_rate = (len(lost_customers) / len(active_before) * 100) if len(active_before) > 0 else 0
-    
+
     # Customer activity over time
     customer_activity = df.groupby(df['created_at'].dt.to_period('W'))['user_wallet_id'].nunique().reset_index()
     customer_activity.columns = ['week', 'active_customers']
     customer_activity['week'] = customer_activity['week'].astype(str)
-    
+
     return churn_rate, len(lost_customers), len(active_before), customer_activity
 
 def forecast_revenue(df, forecast_days=30):
@@ -214,14 +214,14 @@ def forecast_revenue(df, forecast_days=30):
     """
     if df.empty or len(df) < 14:
         return None, None
-    
+
     # Aggregate daily revenue
     daily_rev = df.groupby('date')['total_price'].sum().reset_index()
     daily_rev = daily_rev.sort_values('date')
-    
+
     # Calculate 7-day moving average
     daily_rev['ma7'] = daily_rev['total_price'].rolling(window=7, min_periods=1).mean()
-    
+
     # Calculate trend (simple linear)
     daily_rev['day_num'] = range(len(daily_rev))
     if len(daily_rev) >= 7:
@@ -229,22 +229,22 @@ def forecast_revenue(df, forecast_days=30):
         slope = (recent_data['ma7'].iloc[-1] - recent_data['ma7'].iloc[0]) / len(recent_data)
     else:
         slope = 0
-    
+
     # Generate forecast
     last_date = daily_rev['date'].max()
     last_value = daily_rev['ma7'].iloc[-1]
-    
+
     forecast_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
     forecast_values = [last_value + (slope * i) for i in range(1, forecast_days + 1)]
-    
+
     # Ensure no negative forecasts
     forecast_values = [max(0, v) for v in forecast_values]
-    
+
     forecast_df = pd.DataFrame({
         'date': forecast_dates,
         'forecast': forecast_values
     })
-    
+
     return daily_rev, forecast_df
 
 def calculate_cancellation_metrics(df):
@@ -253,15 +253,15 @@ def calculate_cancellation_metrics(df):
     """
     if df.empty:
         return None
-    
+
     # Check for cancellation status
     cancelled_statuses = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'Missed']
     df['is_cancelled'] = df['status'].isin(cancelled_statuses)
-    
+
     total_orders = len(df)
     cancelled_orders = df['is_cancelled'].sum()
     cancellation_rate = (cancelled_orders / total_orders * 100) if total_orders > 0 else 0
-    
+
     # Cancellation by hour
     hourly_cancel = df.groupby('hour').agg({
         'id': 'count',
@@ -269,7 +269,7 @@ def calculate_cancellation_metrics(df):
     }).reset_index()
     hourly_cancel.columns = ['hour', 'total', 'cancelled']
     hourly_cancel['cancel_rate'] = (hourly_cancel['cancelled'] / hourly_cancel['total'] * 100)
-    
+
     # Cancellation by item
     item_cancel = df.groupby('item_name').agg({
         'id': 'count',
@@ -278,7 +278,7 @@ def calculate_cancellation_metrics(df):
     item_cancel.columns = ['item_name', 'total', 'cancelled']
     item_cancel['cancel_rate'] = (item_cancel['cancelled'] / item_cancel['total'] * 100)
     item_cancel = item_cancel[item_cancel['total'] >= 5].sort_values('cancel_rate', ascending=False).head(10)
-    
+
     return {
         'total_rate': cancellation_rate,
         'total_cancelled': cancelled_orders,
@@ -293,44 +293,44 @@ def calculate_revenue_concentration(df):
     """
     if df.empty or 'user_wallet_id' not in df.columns:
         return None
-    
+
     # Aggregate revenue by customer
     customer_revenue = df.groupby('user_wallet_id')['total_price'].sum().reset_index()
     customer_revenue.columns = ['customer_id', 'revenue']
     customer_revenue = customer_revenue.sort_values('revenue', ascending=True)
-    
+
     # Calculate cumulative percentages
     customer_revenue['cumulative_customers'] = np.arange(1, len(customer_revenue) + 1) / len(customer_revenue) * 100
     customer_revenue['cumulative_revenue'] = customer_revenue['revenue'].cumsum() / customer_revenue['revenue'].sum() * 100
-    
+
     # Calculate Gini coefficient
     # Gini = Area between Lorenz curve and equality line / Total area under equality line
     n = len(customer_revenue)
     revenue_sorted = customer_revenue['revenue'].values
     cumsum = np.cumsum(revenue_sorted)
     gini = (2 * np.sum((np.arange(1, n + 1) * revenue_sorted))) / (n * np.sum(revenue_sorted)) - (n + 1) / n
-    
+
     # Top customer segments
     total_revenue = customer_revenue['revenue'].sum()
     top_10_pct = int(np.ceil(len(customer_revenue) * 0.1))
     top_20_pct = int(np.ceil(len(customer_revenue) * 0.2))
-    
+
     top_10_revenue = customer_revenue.nlargest(top_10_pct, 'revenue')['revenue'].sum()
     top_20_revenue = customer_revenue.nlargest(top_20_pct, 'revenue')['revenue'].sum()
-    
+
     top_10_contribution = (top_10_revenue / total_revenue * 100) if total_revenue > 0 else 0
     top_20_contribution = (top_20_revenue / total_revenue * 100) if total_revenue > 0 else 0
-    
+
     # Customer tiers
     customer_revenue['tier'] = pd.cut(
         customer_revenue['revenue'],
-        bins=[0, customer_revenue['revenue'].quantile(0.5), 
-              customer_revenue['revenue'].quantile(0.8), 
-              customer_revenue['revenue'].quantile(0.95), 
+        bins=[0, customer_revenue['revenue'].quantile(0.5),
+              customer_revenue['revenue'].quantile(0.8),
+              customer_revenue['revenue'].quantile(0.95),
               float('inf')],
         labels=['Low Value', 'Medium Value', 'High Value', 'VIP']
     )
-    
+
     tier_stats = customer_revenue.groupby('tier').agg({
         'customer_id': 'count',
         'revenue': 'sum'
@@ -338,7 +338,7 @@ def calculate_revenue_concentration(df):
     tier_stats.columns = ['tier', 'customers', 'revenue']
     tier_stats['revenue_pct'] = (tier_stats['revenue'] / total_revenue * 100)
     tier_stats['customer_pct'] = (tier_stats['customers'] / len(customer_revenue) * 100)
-    
+
     return {
         'lorenz_data': customer_revenue,
         'gini': gini,
@@ -529,7 +529,7 @@ if not filtered_df.empty:
             orientation='h',
             marker=dict(color=COLORS['primary']),
             text=top_items['revenue'].apply(lambda x: f'NPR {x:,.0f}'),
-            textposition='outside'
+            textposition='auto'
         ))
 
         fig_top.update_layout(
@@ -541,7 +541,7 @@ if not filtered_df.empty:
             paper_bgcolor='white',
             font=dict(family='Roboto', size=12, color=COLORS['neutral']),
             xaxis=dict(showgrid=True, gridcolor='#e9ecef'),
-            yaxis=dict(showgrid=False, autorange="reversed")
+            yaxis=dict(showgrid=False, autorange="reversed"),
         )
 
         st.plotly_chart(fig_top, use_container_width=True)
@@ -564,7 +564,7 @@ if not filtered_df.empty:
                 orientation='h',
                 marker=dict(color=COLORS['diverging_neg']),
                 text=bottom_items['revenue'].apply(lambda x: f'NPR {x:,.0f}'),
-                textposition='outside'
+                textposition='auto'
             ))
 
             fig_bottom.update_layout(
@@ -798,7 +798,7 @@ if not filtered_df.empty:
             y=price_dist['orders'],
             marker=dict(color=[COLORS['primary'], COLORS['secondary'], COLORS['dark'], COLORS['accent']]),
             text=price_dist['orders'],
-            textposition='outside'
+            textposition='auto'
         ))
 
         fig_price.update_layout(
@@ -854,18 +854,18 @@ st.markdown("<p class='subtitle'>Understanding customer loyalty and retention pa
 
 if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
     col1, col2 = st.columns(2)
-    
+
     with col1:
         # Calculate churn for different periods
         churn_30, lost_30, total_30, activity_30 = calculate_churn_rate(filtered_df, 30)
         churn_60, lost_60, total_60, activity_60 = calculate_churn_rate(filtered_df, 60)
-        
+
         # Display churn metrics
         st.markdown(f"""
         <div class='metric-card'>
         <h4 style='color: {COLORS['primary']}; margin-top: 0;'>Churn Rate Metrics</h4>
         <p style='font-size: 18px; margin: 10px 0;'>
-            <strong>30-Day Churn:</strong> 
+            <strong>30-Day Churn:</strong>
             <span style='color: {COLORS['diverging_neg'] if churn_30 > 20 else COLORS['diverging_pos']}; font-size: 24px; font-weight: bold;'>
                 {churn_30:.1f}%
             </span>
@@ -873,7 +873,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
         <p style='font-size: 14px; color: #6c757d;'>{lost_30} of {total_30} customers lost</p>
         <hr style='margin: 15px 0; border: none; border-top: 1px solid #dee2e6;'>
         <p style='font-size: 18px; margin: 10px 0;'>
-            <strong>60-Day Churn:</strong> 
+            <strong>60-Day Churn:</strong>
             <span style='color: {COLORS['diverging_neg'] if churn_60 > 30 else COLORS['diverging_pos']}; font-size: 24px; font-weight: bold;'>
                 {churn_60:.1f}%
             </span>
@@ -881,7 +881,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
         <p style='font-size: 14px; color: #6c757d;'>{lost_60} of {total_60} customers lost</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         # Active customers over time
         if activity_30 is not None and not activity_30.empty:
@@ -895,7 +895,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 fill='tozeroy',
                 fillcolor='rgba(15, 127, 152, 0.1)'
             ))
-            
+
             fig_churn.update_layout(
                 title="Active Customers per Week",
                 xaxis_title="Week",
@@ -907,14 +907,14 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 xaxis=dict(showgrid=False),
                 yaxis=dict(showgrid=True, gridcolor='#e9ecef')
             )
-            
+
             st.plotly_chart(fig_churn, use_container_width=True)
-    
+
     # Churn insight
     churn_status = "concerning" if churn_30 > 25 else "moderate" if churn_30 > 15 else "healthy"
     st.markdown(f"""
     <div class='insight-box'>
-    <strong>Retention Analysis:</strong> The 30-day churn rate of {churn_30:.1f}% is {churn_status}. 
+    <strong>Retention Analysis:</strong> The 30-day churn rate of {churn_30:.1f}% is {churn_status}.
     {"This suggests significant customer attrition—investigate menu satisfaction, pricing, and service quality." if churn_30 > 25 else
      "While manageable, there's room to improve retention through loyalty programs or personalized offers." if churn_30 > 15 else
      "Customer retention is strong, but continuous engagement initiatives will maintain this momentum."}
@@ -929,14 +929,14 @@ def forecast_revenue(df, forecast_days=30):
     """
     if df.empty or len(df) < 14:
         return None, None
-    
+
     # Aggregate daily revenue
     daily_rev = df.groupby('date')['total_price'].sum().reset_index()
     daily_rev = daily_rev.sort_values('date')
-    
+
     # Calculate 7-day moving average
     daily_rev['ma7'] = daily_rev['total_price'].rolling(window=7, min_periods=1).mean()
-    
+
     # Calculate trend (simple linear)
     daily_rev['day_num'] = range(len(daily_rev))
     if len(daily_rev) >= 7:
@@ -944,22 +944,22 @@ def forecast_revenue(df, forecast_days=30):
         slope = (recent_data['ma7'].iloc[-1] - recent_data['ma7'].iloc[0]) / len(recent_data)
     else:
         slope = 0
-    
+
     # Generate forecast
     last_date = daily_rev['date'].max()
     last_value = daily_rev['ma7'].iloc[-1]
-    
+
     forecast_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
     forecast_values = [last_value + (slope * i) for i in range(1, forecast_days + 1)]
-    
+
     # Ensure no negative forecasts
     forecast_values = [max(0, v) for v in forecast_values]
-    
+
     forecast_df = pd.DataFrame({
         'date': forecast_dates,
         'forecast': forecast_values
     })
-    
+
     return daily_rev, forecast_df
 
 # Revenue Forecasting
@@ -968,10 +968,10 @@ st.markdown("<p class='subtitle'>Data-driven predictions for planning and budget
 
 if not filtered_df.empty:
     historical_data, forecast_data = forecast_revenue(filtered_df, forecast_days=30)
-    
+
     if historical_data is not None and forecast_data is not None:
         fig_forecast = go.Figure()
-        
+
         # Historical revenue
         fig_forecast.add_trace(go.Scatter(
             x=historical_data['date'],
@@ -981,7 +981,7 @@ if not filtered_df.empty:
             line=dict(color=COLORS['primary'], width=2),
             opacity=0.6
         ))
-        
+
         # Moving average
         fig_forecast.add_trace(go.Scatter(
             x=historical_data['date'],
@@ -990,7 +990,7 @@ if not filtered_df.empty:
             name='7-Day Average',
             line=dict(color=COLORS['dark'], width=3)
         ))
-        
+
         # Forecast
         fig_forecast.add_trace(go.Scatter(
             x=forecast_data['date'],
@@ -1001,7 +1001,7 @@ if not filtered_df.empty:
             fill='tozeroy',
             fillcolor='rgba(15, 127, 152, 0.1)'
         ))
-        
+
         fig_forecast.update_layout(
             title="Revenue Forecast (Next 30 Days)",
             xaxis_title="Date",
@@ -1015,29 +1015,29 @@ if not filtered_df.empty:
             yaxis=dict(showgrid=True, gridcolor='#e9ecef'),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        
+
         st.plotly_chart(fig_forecast, use_container_width=True)
-        
+
         # Forecast metrics
         col1, col2, col3 = st.columns(3)
-        
+
         total_forecast = forecast_data['forecast'].sum()
         daily_avg_forecast = forecast_data['forecast'].mean()
         historical_avg = historical_data.tail(30)['total_price'].mean()
         change_pct = ((daily_avg_forecast - historical_avg) / historical_avg * 100) if historical_avg > 0 else 0
-        
+
         with col1:
-            st.metric("30-Day Forecast", f"NPR {total_forecast:,.0f}", 
+            st.metric("30-Day Forecast", f"NPR {total_forecast:,.0f}",
                      delta=f"{change_pct:+.1f}% vs last 30 days")
         with col2:
             st.metric("Daily Average (Forecast)", f"NPR {daily_avg_forecast:,.0f}")
         with col3:
             st.metric("Daily Average (Historical)", f"NPR {historical_avg:,.0f}")
-        
+
         st.markdown(f"""
         <div class='insight-box'>
-        <strong>Forecast Insight:</strong> Based on recent trends, daily revenue is projected to 
-        {'increase' if change_pct > 0 else 'decrease'} by {abs(change_pct):.1f}% over the next 30 days. 
+        <strong>Forecast Insight:</strong> Based on recent trends, daily revenue is projected to
+        {'increase' if change_pct > 0 else 'decrease'} by {abs(change_pct):.1f}% over the next 30 days.
         {"This positive trajectory suggests operational improvements are taking effect." if change_pct > 0 else
          "This decline warrants immediate attention—consider promotional campaigns or menu refresh."}
         Total forecasted revenue for the next month: NPR {total_forecast:,.0f}.
@@ -1054,20 +1054,20 @@ st.markdown("<p class='subtitle'>Identifying pain points in the ordering process
 
 if not filtered_df.empty:
     cancel_metrics = calculate_cancellation_metrics(filtered_df)
-    
+
     if cancel_metrics:
         col1, col2 = st.columns([1, 2])
-        
+
         with col1:
             # Cancellation rate summary
             cancel_rate = cancel_metrics['total_rate']
             cancel_color = COLORS['diverging_neg'] if cancel_rate > 10 else COLORS['primary'] if cancel_rate > 5 else COLORS['diverging_pos']
-            
+
             st.markdown(f"""
             <div class='metric-card'>
             <h4 style='color: {COLORS['primary']}; margin-top: 0;'>Cancellation Metrics</h4>
             <p style='font-size: 18px; margin: 10px 0;'>
-                <strong>Overall Rate:</strong> 
+                <strong>Overall Rate:</strong>
                 <span style='color: {cancel_color}; font-size: 32px; font-weight: bold;'>
                     {cancel_rate:.1f}%
                 </span>
@@ -1082,21 +1082,21 @@ if not filtered_df.empty:
             </p>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             # Cancellation rate by hour
             fig_cancel = go.Figure()
-            
+
             fig_cancel.add_trace(go.Bar(
                 x=cancel_metrics['hourly']['hour'],
                 y=cancel_metrics['hourly']['cancel_rate'],
                 marker=dict(color=COLORS['diverging_neg']),
                 name='Cancellation Rate'
             ))
-            
+
             fig_cancel.add_hline(y=5, line_dash="dash", line_color=COLORS['dark'],
                                 annotation_text="5% Threshold")
-            
+
             fig_cancel.update_layout(
                 title="Cancellation Rate by Hour",
                 xaxis_title="Hour of Day",
@@ -1106,24 +1106,24 @@ if not filtered_df.empty:
                 paper_bgcolor='white',
                 font=dict(family='Roboto', size=12, color=COLORS['neutral']),
                 xaxis=dict(showgrid=False, dtick=1),
-                yaxis=dict(showgrid=True, gridcolor='#e9ecef')
+                yaxis=dict(showgrid=True, gridcolor='#e9ecef', range=[0, 10])
             )
-            
+
             st.plotly_chart(fig_cancel, use_container_width=True)
-        
+
         # High cancellation items
         if not cancel_metrics['by_item'].empty:
             st.markdown("<h4 style='margin-top: 2rem;'>Items with Highest Cancellation Rates</h4>", unsafe_allow_html=True)
-            
+
             fig_item_cancel = go.Figure(go.Bar(
                 x=cancel_metrics['by_item']['cancel_rate'],
                 y=cancel_metrics['by_item']['item_name'],
                 orientation='h',
                 marker=dict(color=COLORS['diverging_neg']),
                 text=cancel_metrics['by_item']['cancel_rate'].apply(lambda x: f'{x:.1f}%'),
-                textposition='outside'
+                textposition='auto'
             ))
-            
+
             fig_item_cancel.update_layout(
                 title="Top 10 Items by Cancellation Rate (min 5 orders)",
                 xaxis_title="Cancellation Rate (%)",
@@ -1135,18 +1135,18 @@ if not filtered_df.empty:
                 xaxis=dict(showgrid=True, gridcolor='#e9ecef'),
                 yaxis=dict(showgrid=False, autorange="reversed")
             )
-            
+
             st.plotly_chart(fig_item_cancel, use_container_width=True)
-        
+
         # Cancellation insight
         peak_cancel_hour = cancel_metrics['hourly'].loc[cancel_metrics['hourly']['cancel_rate'].idxmax(), 'hour']
         peak_cancel_rate = cancel_metrics['hourly'].loc[cancel_metrics['hourly']['cancel_rate'].idxmax(), 'cancel_rate']
-        
+
         st.markdown(f"""
         <div class='insight-box'>
-        <strong>Friction Points:</strong> The cancellation rate of {cancel_rate:.1f}% represents 
+        <strong>Friction Points:</strong> The cancellation rate of {cancel_rate:.1f}% represents
         NPR {filtered_df[filtered_df['status'].isin(['Cancelled', 'Canceled', 'cancelled', 'canceled', 'Missed'])]['total_price'].sum():,.0f} in lost revenue.
-        Peak cancellations occur at {int(peak_cancel_hour)}:00 ({peak_cancel_rate:.1f}% rate), suggesting 
+        Peak cancellations occur at {int(peak_cancel_hour)}:00 ({peak_cancel_rate:.1f}% rate), suggesting
         {"capacity issues during rush hours." if peak_cancel_rate > 10 else "manageable operational flow."}
         {"High-cancellation items may indicate inventory issues, long preparation times, or quality concerns—investigate root causes immediately." if not cancel_metrics['by_item'].empty else ""}
         </div>
@@ -1162,10 +1162,10 @@ st.markdown("<p class='subtitle'>Understanding revenue dependency and customer s
 
 if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
     concentration_data = calculate_revenue_concentration(filtered_df)
-    
+
     if concentration_data:
         gini = concentration_data['gini']
-        
+
         # Gini interpretation
         if gini < 0.3:
             gini_status = "very low concentration (highly egalitarian)"
@@ -1183,9 +1183,9 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
             gini_status = "very high concentration (heavily skewed)"
             gini_color = COLORS['diverging_neg']
             risk_level = "High Risk"
-        
+
         col1, col2 = st.columns([1, 2])
-        
+
         with col1:
             # Gini coefficient and key metrics
             st.markdown(f"""
@@ -1219,13 +1219,13 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
             </p>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             # Lorenz Curve
             lorenz_data = concentration_data['lorenz_data']
-            
+
             fig_lorenz = go.Figure()
-            
+
             # Equality line (45-degree line)
             fig_lorenz.add_trace(go.Scatter(
                 x=[0, 100],
@@ -1235,7 +1235,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 line=dict(color='#dee2e6', width=2, dash='dash'),
                 showlegend=True
             ))
-            
+
             # Lorenz curve
             fig_lorenz.add_trace(go.Scatter(
                 x=np.concatenate([[0], lorenz_data['cumulative_customers'].values]),
@@ -1246,7 +1246,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 fill='tonexty',
                 fillcolor='rgba(15, 127, 152, 0.2)'
             ))
-            
+
             # Add reference points
             fig_lorenz.add_annotation(
                 x=10, y=concentration_data['top_10_contribution'],
@@ -1259,7 +1259,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 bordercolor=COLORS['dark'],
                 borderwidth=1
             )
-            
+
             fig_lorenz.update_layout(
                 title="Lorenz Curve - Revenue Distribution",
                 xaxis_title="Cumulative % of Customers",
@@ -1272,27 +1272,27 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 yaxis=dict(showgrid=True, gridcolor='#e9ecef', range=[0, 100]),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
-            
+
             st.plotly_chart(fig_lorenz, use_container_width=True)
-        
+
         # Customer tier distribution
         st.markdown("<h4 style='margin-top: 2rem;'>Customer Value Segmentation</h4>", unsafe_allow_html=True)
-        
+
         col1, col2 = st.columns(2)
-        
+
         with col1:
             # Tier distribution by count
             tier_stats = concentration_data['tier_stats']
-            
+
             fig_tier_count = go.Figure()
             fig_tier_count.add_trace(go.Bar(
                 x=tier_stats['tier'],
                 y=tier_stats['customer_pct'],
                 marker=dict(color=[COLORS['accent'], COLORS['secondary'], COLORS['primary'], COLORS['dark']]),
                 text=tier_stats['customer_pct'].apply(lambda x: f'{x:.1f}%'),
-                textposition='outside'
+                textposition='auto'
             ))
-            
+
             fig_tier_count.update_layout(
                 title="Customer Distribution by Value Tier",
                 xaxis_title="",
@@ -1304,9 +1304,9 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 xaxis=dict(showgrid=False),
                 yaxis=dict(showgrid=True, gridcolor='#e9ecef')
             )
-            
+
             st.plotly_chart(fig_tier_count, use_container_width=True)
-        
+
         with col2:
             # Tier contribution to revenue
             fig_tier_revenue = go.Figure()
@@ -1315,9 +1315,9 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 y=tier_stats['revenue_pct'],
                 marker=dict(color=[COLORS['accent'], COLORS['secondary'], COLORS['primary'], COLORS['dark']]),
                 text=tier_stats['revenue_pct'].apply(lambda x: f'{x:.1f}%'),
-                textposition='outside'
+                textposition='auto'
             ))
-            
+
             fig_tier_revenue.update_layout(
                 title="Revenue Contribution by Value Tier",
                 xaxis_title="",
@@ -1329,16 +1329,16 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 xaxis=dict(showgrid=False),
                 yaxis=dict(showgrid=True, gridcolor='#e9ecef')
             )
-            
+
             st.plotly_chart(fig_tier_revenue, use_container_width=True)
-        
+
         # Concentration insight
         pareto_ratio = concentration_data['top_20_contribution']
-        
+
         st.markdown(f"""
         <div class='insight-box'>
-        <strong>Revenue Concentration Analysis:</strong> With a Gini coefficient of {gini:.3f}, the canteen exhibits {gini_status}. 
-        The top 10% of customers account for {concentration_data['top_10_contribution']:.1f}% of revenue, 
+        <strong>Revenue Concentration Analysis:</strong> With a Gini coefficient of {gini:.3f}, the canteen exhibits {gini_status}.
+        The top 10% of customers account for {concentration_data['top_10_contribution']:.1f}% of revenue,
         while the top 20% contribute {pareto_ratio:.1f}% {"(close to the Pareto principle)" if 75 <= pareto_ratio <= 85 else ""}.
         <br><br>
         {"<strong>Strategic Implication:</strong> High concentration means significant revenue risk if top customers churn. Implement VIP retention programs, personalized engagement, and regular satisfaction checks for high-value customers. Simultaneously, develop strategies to upgrade medium-value customers." if gini > 0.5 else
