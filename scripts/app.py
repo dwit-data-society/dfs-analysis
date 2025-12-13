@@ -1,9 +1,13 @@
 import streamlit as st
+from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import numpy as np
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_PATH = BASE_DIR / "data" / "orders.csv"
 
 # Page config
 st.set_page_config(page_title="Deerwalk Food System Insights", layout="wide", initial_sidebar_state="collapsed")
@@ -98,7 +102,7 @@ COLORS = {
 def load_data():
     # --- HANDLE MALFORMED CSV ---
     try:
-        with open('../data/orders.csv', 'r', encoding='utf-8-sig') as f:
+        with open(DATA_PATH, "r", encoding="utf-8-sig") as f:
             lines = f.readlines()
 
         # Clean the first line (header)
