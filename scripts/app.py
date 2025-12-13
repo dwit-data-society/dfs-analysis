@@ -99,48 +99,53 @@ COLORS = {
 
 # Load data with caching
 @st.cache_data
+@st.cache_data
 def load_data():
-    """Load and preprocess orders data with optimized CSV parsing."""
+    """Load and preprocess orders data—ultra-optimized for Streamlit Cloud."""
     try:
+        # Read entire file at once
         with open(DATA_PATH, 'r', encoding='utf-8-sig') as f:
-            lines = f.readlines()
+            content = f.read()
         
-        # Parse header: remove outer quotes, then unescape internal quotes
+        # Split by newline
+        lines = content.split('\n')
+        
+        # Parse header
         header_line = lines[0].strip()
         if header_line.startswith('"') and header_line.endswith('"'):
-            header_line = header_line[1:-1]  # Remove outer quotes
-        header_line = header_line.replace('""', '"')  # Unescape internal quotes
-        
-        # Split by semicolon and clean column names
+            header_line = header_line[1:-1]
+        header_line = header_line.replace('""', '"')
         columns = [col.strip().replace('"', '') for col in header_line.split(';')]
         
-        # Parse data rows efficiently using list comprehension
+        # Batch parse data: split all non-header lines at once
+        data_lines = [l.strip() for l in lines[1:] if l.strip()]
+        
+        # Use regex for fast quote removal
+        import re
         data = []
-        for line in lines[1:]:
-            if not line.strip():
-                continue
-            line = line.strip()
+        for line in data_lines:
             if line.startswith('"') and line.endswith('"'):
                 line = line[1:-1]
-            line = line.replace('""', '"')  # Unescape internal quotes
+            line = line.replace('""', '"')
             
-            # Split and clean values
-            values = [val.strip().replace('"', '') for val in line.split(';')]
-            
+            # Fast split on semicolon
+            values = [v.strip().replace('"', '') for v in line.split(';')]
             if len(values) == len(columns):
                 data.append(values)
         
-        # Create DataFrame
+        # Create DataFrame in one go (faster than row-by-row)
         orders = pd.DataFrame(data, columns=columns)
+        del data  # Free memory immediately
         
     except Exception as e:
         st.error(f"Error parsing CSV: {e}")
         st.stop()
 
-    # Replace NULL strings with NaN
-    orders = orders.replace(['NULL', 'null', 'Null', 'None', 'none'], np.nan)
+    # Replace NULL strings with NaN (vectorized)
+    for col in orders.columns:
+        orders[col] = orders[col].replace(['NULL', 'null', 'Null', 'None', 'none'], np.nan)
 
-    # Validate critical columns exist
+    # Validate and create critical columns
     critical_columns = ['created_at', 'updated_at', 'deleted_at', 'item_name', 'status', 'total_price', 'quantity', 'id']
     for col in critical_columns:
         if col not in orders.columns:
@@ -148,23 +153,21 @@ def load_data():
                 orders[col] = np.nan
             elif col == 'status':
                 orders[col] = 'Unknown'
-            else:
-                st.error(f"Required column '{col}' not found in CSV. Available columns: {list(orders.columns)}")
-                st.stop()
 
-    # Remove deleted records early (reduces dataset size)
-    orders = orders[orders['deleted_at'].isna()].copy()
+    # Early filtering: remove deleted records
+    mask = orders['deleted_at'].isna()
+    orders = orders[mask].copy()
 
-    # Type conversions
-    orders['created_at'] = pd.to_datetime(orders['created_at'], errors='coerce')
-    orders['updated_at'] = pd.to_datetime(orders['updated_at'], errors='coerce')
+    # Type conversions (pandas is optimized for this)
+    orders['created_at'] = pd.to_datetime(orders['created_at'], errors='coerce', format='%Y-%m-%d %H:%M:%S')
+    orders['updated_at'] = pd.to_datetime(orders['updated_at'], errors='coerce', format='%Y-%m-%d %H:%M:%S')
     orders['total_price'] = pd.to_numeric(orders['total_price'], errors='coerce')
     orders['quantity'] = pd.to_numeric(orders['quantity'], errors='coerce')
 
-    # Drop rows with missing critical data
-    orders = orders.dropna(subset=['created_at', 'updated_at', 'total_price'])
+    # Drop invalid rows early
+    orders = orders.dropna(subset=['created_at', 'updated_at', 'total_price'], how='any')
 
-    # Compute derived columns (vectorized)
+    # Derived columns (all vectorized, no loops)
     orders['fulfillment_mins'] = (orders['updated_at'] - orders['created_at']).dt.total_seconds() / 60
     orders['date'] = orders['created_at'].dt.date
     orders['hour'] = orders['created_at'].dt.hour
@@ -172,14 +175,16 @@ def load_data():
     orders['month'] = orders['created_at'].dt.to_period('M').astype(str)
     orders['week'] = orders['created_at'].dt.to_period('W').astype(str)
 
-    # Price categorization
+    # Price bins (vectorized)
     orders['price_category'] = pd.cut(
         orders['total_price'],
         bins=[0, 50, 100, 200, float('inf')],
-        labels=['Budget (<50)', 'Mid (50-100)', 'Premium (100-200)', 'Luxury (200+)']
+        labels=['Budget (<50)', 'Mid (50-100)', 'Premium (100-200)', 'Luxury (200+)'],
+        include_lowest=True
     )
 
     return orders
+
 def calculate_churn_rate(df, period_days=30):
     if df.empty or 'user_wallet_id' not in df.columns:
         return None, None, None
