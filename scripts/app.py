@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 # Page config
-st.set_page_config(page_title="Canteen Performance Analysis", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Deerwalk Food System Insights", layout="wide", initial_sidebar_state="collapsed")
 
 # Custom CSS for style
 st.markdown("""
@@ -70,6 +70,14 @@ st.markdown("""
         font-weight: 300;
         margin-top: -10px;
     }
+
+    .narrative-text {
+        color: #2c3e50;
+        font-size: 16px;
+        line-height: 1.8;
+        text-align: justify;
+        margin: 1.5rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -89,16 +97,14 @@ COLORS = {
 @st.cache_data
 def load_data():
     # --- HANDLE MALFORMED CSV ---
-    # The CSV has an extra layer of quotes wrapping the entire header and rows
-    # Read raw and clean manually
     try:
         with open('../data/orders.csv', 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
 
-        # Clean the first line (header) - remove outer quotes and split by semicolon
+        # Clean the first line (header)
         header_line = lines[0].strip()
         if header_line.startswith('"') and header_line.endswith('"'):
-            header_line = header_line[1:-1]  # Remove outer quotes
+            header_line = header_line[1:-1]
 
         # Split by semicolon and clean individual column names
         columns = []
@@ -113,9 +119,8 @@ def load_data():
                 continue
             line = line.strip()
             if line.startswith('"') and line.endswith('"'):
-                line = line[1:-1]  # Remove outer quotes
+                line = line[1:-1]
 
-            # Split by semicolon and clean values
             values = []
             for val in line.split(';'):
                 clean_val = val.strip().replace('""', '"').replace('"', '')
@@ -124,17 +129,14 @@ def load_data():
             if len(values) == len(columns):
                 data.append(values)
 
-        # Create DataFrame
         orders = pd.DataFrame(data, columns=columns)
 
     except Exception as e:
         st.error(f"Error parsing CSV: {e}")
         st.stop()
 
-    # Convert NULL strings to proper NaN
     orders = orders.replace(['NULL', 'null', 'Null', 'None', 'none'], np.nan)
 
-    # Ensure critical columns exist
     critical_columns = ['created_at', 'updated_at', 'deleted_at', 'item_name', 'status', 'total_price', 'quantity', 'id']
     for col in critical_columns:
         if col not in orders.columns:
@@ -146,31 +148,20 @@ def load_data():
                 st.error(f"Required column '{col}' not found in CSV")
                 st.stop()
 
-    # Remove deleted records
     orders = orders[orders['deleted_at'].isna()].copy()
-
-    # Convert date columns to datetime
     orders['created_at'] = pd.to_datetime(orders['created_at'], errors='coerce')
     orders['updated_at'] = pd.to_datetime(orders['updated_at'], errors='coerce')
-
-    # Convert numeric columns
     orders['total_price'] = pd.to_numeric(orders['total_price'], errors='coerce')
     orders['quantity'] = pd.to_numeric(orders['quantity'], errors='coerce')
-
-    # Remove rows with NaN in critical columns
     orders = orders.dropna(subset=['created_at', 'updated_at', 'total_price'])
 
-    # Calculate fulfillment time
     orders['fulfillment_mins'] = (orders['updated_at'] - orders['created_at']).dt.total_seconds() / 60
-
-    # Extract time features
     orders['date'] = orders['created_at'].dt.date
     orders['hour'] = orders['created_at'].dt.hour
     orders['day_of_week'] = orders['created_at'].dt.day_name()
     orders['month'] = orders['created_at'].dt.to_period('M').astype(str)
     orders['week'] = orders['created_at'].dt.to_period('W').astype(str)
 
-    # Price categories
     orders['price_category'] = pd.cut(orders['total_price'],
                                        bins=[0, 50, 100, 200, float('inf')],
                                        labels=['Budget (<50)', 'Mid (50-100)', 'Premium (100-200)', 'Luxury (200+)'])
@@ -178,30 +169,21 @@ def load_data():
     return orders
 
 def calculate_churn_rate(df, period_days=30):
-    """
-    Calculate customer churn rate based on user_wallet_id activity
-    """
     if df.empty or 'user_wallet_id' not in df.columns:
         return None, None, None
 
-    # Get the most recent date in the dataset
     max_date = df['created_at'].max()
     period_start = max_date - timedelta(days=period_days)
 
-    # Customers active before the period
     pre_period = df[df['created_at'] < period_start]
     active_before = set(pre_period['user_wallet_id'].unique())
 
-    # Customers active during the period
     during_period = df[(df['created_at'] >= period_start) & (df['created_at'] <= max_date)]
     active_during = set(during_period['user_wallet_id'].unique())
 
-    # Lost customers (active before but not during)
     lost_customers = active_before - active_during
-
     churn_rate = (len(lost_customers) / len(active_before) * 100) if len(active_before) > 0 else 0
 
-    # Customer activity over time
     customer_activity = df.groupby(df['created_at'].dt.to_period('W'))['user_wallet_id'].nunique().reset_index()
     customer_activity.columns = ['week', 'active_customers']
     customer_activity['week'] = customer_activity['week'].astype(str)
@@ -209,20 +191,13 @@ def calculate_churn_rate(df, period_days=30):
     return churn_rate, len(lost_customers), len(active_before), customer_activity
 
 def forecast_revenue(df, forecast_days=30):
-    """
-    Simple revenue forecasting using moving average and trend
-    """
     if df.empty or len(df) < 14:
         return None, None
 
-    # Aggregate daily revenue
     daily_rev = df.groupby('date')['total_price'].sum().reset_index()
     daily_rev = daily_rev.sort_values('date')
-
-    # Calculate 7-day moving average
     daily_rev['ma7'] = daily_rev['total_price'].rolling(window=7, min_periods=1).mean()
 
-    # Calculate trend (simple linear)
     daily_rev['day_num'] = range(len(daily_rev))
     if len(daily_rev) >= 7:
         recent_data = daily_rev.tail(14)
@@ -230,14 +205,11 @@ def forecast_revenue(df, forecast_days=30):
     else:
         slope = 0
 
-    # Generate forecast
     last_date = daily_rev['date'].max()
     last_value = daily_rev['ma7'].iloc[-1]
 
     forecast_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
     forecast_values = [last_value + (slope * i) for i in range(1, forecast_days + 1)]
-
-    # Ensure no negative forecasts
     forecast_values = [max(0, v) for v in forecast_values]
 
     forecast_df = pd.DataFrame({
@@ -248,13 +220,9 @@ def forecast_revenue(df, forecast_days=30):
     return daily_rev, forecast_df
 
 def calculate_cancellation_metrics(df):
-    """
-    Calculate order cancellation rates and patterns
-    """
     if df.empty:
         return None
 
-    # Check for cancellation status
     cancelled_statuses = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'Missed']
     df['is_cancelled'] = df['status'].isin(cancelled_statuses)
 
@@ -262,7 +230,6 @@ def calculate_cancellation_metrics(df):
     cancelled_orders = df['is_cancelled'].sum()
     cancellation_rate = (cancelled_orders / total_orders * 100) if total_orders > 0 else 0
 
-    # Cancellation by hour
     hourly_cancel = df.groupby('hour').agg({
         'id': 'count',
         'is_cancelled': 'sum'
@@ -270,7 +237,6 @@ def calculate_cancellation_metrics(df):
     hourly_cancel.columns = ['hour', 'total', 'cancelled']
     hourly_cancel['cancel_rate'] = (hourly_cancel['cancelled'] / hourly_cancel['total'] * 100)
 
-    # Cancellation by item
     item_cancel = df.groupby('item_name').agg({
         'id': 'count',
         'is_cancelled': 'sum'
@@ -288,29 +254,21 @@ def calculate_cancellation_metrics(df):
     }
 
 def calculate_revenue_concentration(df):
-    """
-    Calculate revenue concentration using Gini coefficient and Lorenz curve
-    """
     if df.empty or 'user_wallet_id' not in df.columns:
         return None
 
-    # Aggregate revenue by customer
     customer_revenue = df.groupby('user_wallet_id')['total_price'].sum().reset_index()
     customer_revenue.columns = ['customer_id', 'revenue']
     customer_revenue = customer_revenue.sort_values('revenue', ascending=True)
 
-    # Calculate cumulative percentages
     customer_revenue['cumulative_customers'] = np.arange(1, len(customer_revenue) + 1) / len(customer_revenue) * 100
     customer_revenue['cumulative_revenue'] = customer_revenue['revenue'].cumsum() / customer_revenue['revenue'].sum() * 100
 
-    # Calculate Gini coefficient
-    # Gini = Area between Lorenz curve and equality line / Total area under equality line
     n = len(customer_revenue)
     revenue_sorted = customer_revenue['revenue'].values
     cumsum = np.cumsum(revenue_sorted)
     gini = (2 * np.sum((np.arange(1, n + 1) * revenue_sorted))) / (n * np.sum(revenue_sorted)) - (n + 1) / n
 
-    # Top customer segments
     total_revenue = customer_revenue['revenue'].sum()
     top_10_pct = int(np.ceil(len(customer_revenue) * 0.1))
     top_20_pct = int(np.ceil(len(customer_revenue) * 0.2))
@@ -321,7 +279,6 @@ def calculate_revenue_concentration(df):
     top_10_contribution = (top_10_revenue / total_revenue * 100) if total_revenue > 0 else 0
     top_20_contribution = (top_20_revenue / total_revenue * 100) if total_revenue > 0 else 0
 
-    # Customer tiers
     customer_revenue['tier'] = pd.cut(
         customer_revenue['revenue'],
         bins=[0, customer_revenue['revenue'].quantile(0.5),
@@ -358,7 +315,6 @@ except Exception as e:
 # Sidebar filters
 st.sidebar.title("Dashboard Filters")
 
-# Date range filter (handle empty data case)
 if not df.empty and df['created_at'].notna().any():
     min_date = df['created_at'].min().date()
     max_date = df['created_at'].max().date()
@@ -380,7 +336,6 @@ else:
     st.warning("No valid date data found.")
     filtered_df = df.copy()
 
-# Item filter
 if 'item_name' in df.columns:
     all_items = ['All Items'] + sorted(df['item_name'].dropna().unique().tolist())
     selected_items = st.sidebar.multiselect("Filter by Items", all_items, default=['All Items'])
@@ -388,12 +343,10 @@ if 'item_name' in df.columns:
     if 'All Items' not in selected_items and selected_items:
         filtered_df = filtered_df[filtered_df['item_name'].isin(selected_items)]
 
-# Status filter
 if 'status' in df.columns:
     status_filter = st.sidebar.multiselect("Order Status", df['status'].dropna().unique(), default=df['status'].dropna().unique())
     filtered_df = filtered_df[filtered_df['status'].isin(status_filter)]
 
-# Comparison mode
 st.sidebar.markdown("---")
 comparison_mode = st.sidebar.checkbox("Enable Period Comparison", value=False)
 
@@ -401,9 +354,10 @@ if comparison_mode:
     period_days = st.sidebar.slider("Compare last N days", 7, 90, 30)
 
 # Main title
-st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>University Canteen Performance Analysis</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #6c757d; font-size: 14px;'>Data-driven insights for operational excellence</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>Deerwalk Food System Insights</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #6c757d; font-size: 18px;'>Unpacking Canteen Sales</p>", unsafe_allow_html=True)
 st.markdown("---")
+st.markdown("<p class='narrative-text'>The data collection for this report started on October 14, 2024 achieving 15.6 thousand on the first day and ended on November 3, 2025, achieving 20 thousand as daily revenue. The Deerwalk Foods System has a steady flow of revenue as there is no continuous downward slope anywhere.</p>", unsafe_allow_html=True)
 
 # Executive Summary
 st.markdown("<div class='section-header'><h2>Executive Summary</h2></div>", unsafe_allow_html=True)
@@ -424,7 +378,6 @@ with col3:
 with col4:
     st.metric("Delivery Success", f"{delivery_rate:.1f}%")
 
-# Key insight box
 missed_orders = filtered_df[filtered_df['status'] == 'Missed']
 missed_pct = len(missed_orders) / len(filtered_df) * 100 if len(filtered_df) > 0 else 0
 
@@ -440,7 +393,6 @@ in lost revenue. Addressing operational bottlenecks could unlock significant val
 st.markdown("<div class='section-header'><h2>1. Revenue Performance & Growth Trajectory</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>Understanding revenue patterns reveals peak periods and growth opportunities</p>", unsafe_allow_html=True)
 
-# Daily revenue trend
 if not filtered_df.empty:
     daily_revenue = filtered_df.groupby('date').agg({
         'total_price': 'sum',
@@ -459,7 +411,6 @@ if not filtered_df.empty:
         fillcolor='rgba(15, 127, 152, 0.1)'
     ))
 
-    # Add 7-day moving average
     daily_revenue['ma7'] = daily_revenue['revenue'].rolling(window=7, min_periods=1).mean()
     fig_revenue.add_trace(go.Scatter(
         x=daily_revenue['date'],
@@ -486,7 +437,6 @@ if not filtered_df.empty:
 
     st.plotly_chart(fig_revenue, use_container_width=True)
 
-    # Growth analysis
     if len(daily_revenue) > 7:
         recent_avg = daily_revenue.tail(7)['revenue'].mean()
         previous_avg = daily_revenue.iloc[-14:-7]['revenue'].mean() if len(daily_revenue) > 14 else daily_revenue.head(7)['revenue'].mean()
@@ -504,9 +454,13 @@ if not filtered_df.empty:
 else:
     st.info("No revenue data available for the selected range.")
 
+st.markdown("<p class='narrative-text'>According to data and analysis from Data Society, the highest revenue earned in a single day was 72.5 thousand on November 28, 2024 and the lowest recorded revenue was on October 12, 2025 with NPR 60.</p>", unsafe_allow_html=True)
+
 # Product Performance
 st.markdown("<div class='section-header'><h2>2. Menu Item Performance Matrix</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>Which items drive revenue, and which underperform?</p>", unsafe_allow_html=True)
+
+st.markdown("<p class='narrative-text'><strong>Plain rice full shows up undisputed as the most revenue generating item.</strong> Followed by Chicken curry which pairs well with the rice. The Chicken momo has done considerable well despite being one of the items higher in the expense scale. The momo items also show up in the top 5 revenue generating items.</p>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
@@ -515,7 +469,6 @@ bottom_items = pd.DataFrame()
 
 if not filtered_df.empty:
     with col1:
-        # Top performers
         top_items = filtered_df.groupby('item_name').agg({
             'total_price': 'sum',
             'id': 'count'
@@ -528,8 +481,7 @@ if not filtered_df.empty:
             y=top_items['item_name'],
             orientation='h',
             marker=dict(color=COLORS['primary']),
-            text=top_items['revenue'].apply(lambda x: f'NPR {x:,.0f}'),
-            textposition='auto'
+            hovertemplate='<b>%{y}</b><br>NPR %{x:,.0f}<extra></extra>'
         ))
 
         fig_top.update_layout(
@@ -542,18 +494,18 @@ if not filtered_df.empty:
             font=dict(family='Roboto', size=12, color=COLORS['neutral']),
             xaxis=dict(showgrid=True, gridcolor='#e9ecef'),
             yaxis=dict(showgrid=False, autorange="reversed"),
+            margin=dict(r=20, l=10, t=50, b=50)
         )
 
         st.plotly_chart(fig_top, use_container_width=True)
 
     with col2:
-        # Bottom performers
         bottom_items = filtered_df.groupby('item_name').agg({
             'total_price': 'sum',
             'id': 'count'
         }).reset_index()
         bottom_items.columns = ['item_name', 'revenue', 'orders']
-        bottom_items = bottom_items[bottom_items['orders'] >= 5]  # Only items with at least 5 orders
+        bottom_items = bottom_items[bottom_items['orders'] >= 5]
 
         if len(bottom_items) > 0:
             bottom_items = bottom_items.sort_values('revenue', ascending=True).head(10)
@@ -563,8 +515,7 @@ if not filtered_df.empty:
                 y=bottom_items['item_name'],
                 orientation='h',
                 marker=dict(color=COLORS['diverging_neg']),
-                text=bottom_items['revenue'].apply(lambda x: f'NPR {x:,.0f}'),
-                textposition='auto'
+                hovertemplate='<b>%{y}</b><br>NPR %{x:,.0f}<extra></extra>'
             ))
 
             fig_bottom.update_layout(
@@ -576,14 +527,14 @@ if not filtered_df.empty:
                 paper_bgcolor='white',
                 font=dict(family='Roboto', size=12, color=COLORS['neutral']),
                 xaxis=dict(showgrid=True, gridcolor='#e9ecef'),
-                yaxis=dict(showgrid=False, autorange="reversed")
+                yaxis=dict(showgrid=False, autorange="reversed"),
+                margin=dict(r=20, l=10, t=50, b=50)
             )
 
             st.plotly_chart(fig_bottom, use_container_width=True)
         else:
             st.info("No items with at least 5 orders to display in bottom performers.")
 
-    # Actionable insight
     if len(top_items) > 0:
         top_item = top_items.iloc[0]
         if len(bottom_items) > 0:
@@ -603,16 +554,19 @@ if not filtered_df.empty:
             </div>
             """, unsafe_allow_html=True)
 
+st.markdown("<p class='narrative-text'>There were some items that did not sell well due to unpopularity among customers, with Aloo tarkari being the most ignored. It is closely followed by the newer items on the menu which are baked goods: Cheese Danish and Mini Chocolate Doughnut. However, for these items there is the excuse that they were kept on the menu far fewer times than the Aloo tarkari.</p>", unsafe_allow_html=True)
+
 # Demand Patterns
 st.markdown("<div class='section-header'><h2>3. Temporal Demand Patterns</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>When do customers order? Understanding peak hours guides staffing and inventory decisions</p>", unsafe_allow_html=True)
+
+st.markdown("<p class='narrative-text'>The peak time when the most orders arrive in the system is at 16:00 (4 PM) when all the people working in the Deerwalk premises take a break from work. We can deduce that the time after 2 PM is when most of the orders start to arrive. In accordance to the days, all days of the week except Saturday and Sunday show a similar amount of orders coming in.</p>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 hourly = pd.DataFrame()
 
 if not filtered_df.empty:
     with col1:
-        # Hourly demand
         hourly = filtered_df.groupby('hour').agg({
             'total_price': 'sum',
             'id': 'count'
@@ -642,7 +596,6 @@ if not filtered_df.empty:
         st.plotly_chart(fig_hourly, use_container_width=True)
 
     with col2:
-        # Day of week
         day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         daily = filtered_df.groupby('day_of_week').agg({
             'total_price': 'sum',
@@ -650,7 +603,6 @@ if not filtered_df.empty:
         }).reset_index()
         daily.columns = ['day', 'revenue', 'orders']
 
-        # Ensure categories exist even if not in data
         daily['day'] = pd.Categorical(daily['day'], categories=day_order, ordered=True)
         daily = daily.sort_values('day')
 
@@ -675,7 +627,6 @@ if not filtered_df.empty:
 
         st.plotly_chart(fig_daily, use_container_width=True)
 
-    # Peak hours insight
     if len(hourly) > 0:
         peak_hour = hourly.loc[hourly['orders'].idxmax(), 'hour']
         peak_orders = hourly.loc[hourly['orders'].idxmax(), 'orders']
@@ -697,7 +648,6 @@ col1, col2 = st.columns(2)
 
 if not filtered_df.empty:
     with col1:
-        # Fulfillment time distribution
         delivered_orders = filtered_df[filtered_df['status'] == 'Delivered']
 
         if len(delivered_orders) > 0:
@@ -729,7 +679,6 @@ if not filtered_df.empty:
             st.info("No delivered orders to analyze fulfillment time.")
 
     with col2:
-        # Success rate by hour
         hourly_success = filtered_df.groupby('hour').agg({
             'id': 'count',
             'status': lambda x: (x == 'Delivered').sum()
@@ -763,7 +712,6 @@ if not filtered_df.empty:
 
         st.plotly_chart(fig_success, use_container_width=True)
 
-    # Efficiency insight
     if len(delivered_orders) > 0:
         avg_fulfill = delivered_orders['fulfillment_mins'].mean()
         median_time = delivered_orders['fulfillment_mins'].median()
@@ -781,11 +729,12 @@ if not filtered_df.empty:
 st.markdown("<div class='section-header'><h2>5. Price Point & Customer Behavior</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>Understanding willingness to pay and order patterns</p>", unsafe_allow_html=True)
 
+st.markdown("<p class='narrative-text'>It seems that people show more willingness to pay in the medium range, meaning from 50-100 NPR for items. After 100 rupees, customers find it harder to pay for food. However, although people buy items in the medium price range most frequently, those who do purchase premium-priced items contribute more to total revenue themselves.</p>", unsafe_allow_html=True)
+
 col1, col2 = st.columns(2)
 
 if not filtered_df.empty:
     with col1:
-        # Price category distribution
         price_dist = filtered_df.groupby('price_category').agg({
             'id': 'count',
             'total_price': 'sum'
@@ -816,7 +765,6 @@ if not filtered_df.empty:
         st.plotly_chart(fig_price, use_container_width=True)
 
     with col2:
-        # Monthly revenue by category
         monthly_price = filtered_df.groupby(['month', 'price_category']).agg({
             'total_price': 'sum'
         }).reset_index()
@@ -852,15 +800,15 @@ if not filtered_df.empty:
 st.markdown("<div class='section-header'><h2>6. Customer Retention & Churn Analysis</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>Understanding customer loyalty and retention patterns</p>", unsafe_allow_html=True)
 
+st.markdown("<p class='narrative-text'>This analysis provides information about how many customers are stopping use of the system, possibly going outside for better establishments. There's a real problem here as our system is showing 50% of people lost in the first 30 days.</p>", unsafe_allow_html=True)
+
 if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
     col1, col2 = st.columns(2)
 
     with col1:
-        # Calculate churn for different periods
         churn_30, lost_30, total_30, activity_30 = calculate_churn_rate(filtered_df, 30)
         churn_60, lost_60, total_60, activity_60 = calculate_churn_rate(filtered_df, 60)
 
-        # Display churn metrics
         st.markdown(f"""
         <div class='metric-card'>
         <h4 style='color: {COLORS['primary']}; margin-top: 0;'>Churn Rate Metrics</h4>
@@ -883,7 +831,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
         """, unsafe_allow_html=True)
 
     with col2:
-        # Active customers over time
         if activity_30 is not None and not activity_30.empty:
             fig_churn = go.Figure()
             fig_churn.add_trace(go.Scatter(
@@ -910,7 +857,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
 
             st.plotly_chart(fig_churn, use_container_width=True)
 
-    # Churn insight
     churn_status = "concerning" if churn_30 > 25 else "moderate" if churn_30 > 15 else "healthy"
     st.markdown(f"""
     <div class='insight-box'>
@@ -923,44 +869,7 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
 else:
     st.info("Customer ID data not available for churn analysis.")
 
-def forecast_revenue(df, forecast_days=30):
-    """
-    Simple revenue forecasting using moving average and trend
-    """
-    if df.empty or len(df) < 14:
-        return None, None
-
-    # Aggregate daily revenue
-    daily_rev = df.groupby('date')['total_price'].sum().reset_index()
-    daily_rev = daily_rev.sort_values('date')
-
-    # Calculate 7-day moving average
-    daily_rev['ma7'] = daily_rev['total_price'].rolling(window=7, min_periods=1).mean()
-
-    # Calculate trend (simple linear)
-    daily_rev['day_num'] = range(len(daily_rev))
-    if len(daily_rev) >= 7:
-        recent_data = daily_rev.tail(14)
-        slope = (recent_data['ma7'].iloc[-1] - recent_data['ma7'].iloc[0]) / len(recent_data)
-    else:
-        slope = 0
-
-    # Generate forecast
-    last_date = daily_rev['date'].max()
-    last_value = daily_rev['ma7'].iloc[-1]
-
-    forecast_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
-    forecast_values = [last_value + (slope * i) for i in range(1, forecast_days + 1)]
-
-    # Ensure no negative forecasts
-    forecast_values = [max(0, v) for v in forecast_values]
-
-    forecast_df = pd.DataFrame({
-        'date': forecast_dates,
-        'forecast': forecast_values
-    })
-
-    return daily_rev, forecast_df
+st.markdown("<p class='narrative-text'>The line graph shows that the most active users in the span of the data taken were between the dates of July 21, 2025 and September 7, 2025, with the number of most active customers ever recorded being 302. After the active period there has been a sharp decline sadly.</p>", unsafe_allow_html=True)
 
 # Revenue Forecasting
 st.markdown("<div class='section-header'><h2>7. Revenue Forecasting & Projections</h2></div>", unsafe_allow_html=True)
@@ -972,7 +881,6 @@ if not filtered_df.empty:
     if historical_data is not None and forecast_data is not None:
         fig_forecast = go.Figure()
 
-        # Historical revenue
         fig_forecast.add_trace(go.Scatter(
             x=historical_data['date'],
             y=historical_data['total_price'],
@@ -982,7 +890,6 @@ if not filtered_df.empty:
             opacity=0.6
         ))
 
-        # Moving average
         fig_forecast.add_trace(go.Scatter(
             x=historical_data['date'],
             y=historical_data['ma7'],
@@ -991,7 +898,6 @@ if not filtered_df.empty:
             line=dict(color=COLORS['dark'], width=3)
         ))
 
-        # Forecast
         fig_forecast.add_trace(go.Scatter(
             x=forecast_data['date'],
             y=forecast_data['forecast'],
@@ -1018,7 +924,6 @@ if not filtered_df.empty:
 
         st.plotly_chart(fig_forecast, use_container_width=True)
 
-        # Forecast metrics
         col1, col2, col3 = st.columns(3)
 
         total_forecast = forecast_data['forecast'].sum()
@@ -1048,9 +953,13 @@ if not filtered_df.empty:
 else:
     st.info("No data available for forecasting.")
 
+st.markdown("<p class='narrative-text'>The trends from October 2024 to November 2025 show a certain pattern from which Data Society conducted predictions for planning and budgeting. According to those predictions, the daily revenue is estimated to increase in the coming days.</p>", unsafe_allow_html=True)
+
 # Order Cancellation Analysis
 st.markdown("<div class='section-header'><h2>8. Order Cancellation & Fulfillment Friction</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>Identifying pain points in the ordering process</p>", unsafe_allow_html=True)
+
+st.markdown("<p class='narrative-text'>The system at Deerwalk boasts an overall cancellation rate of 1.6% of orders. The chart alongside shows that the time when most orders were cancelled was 2 o'clock. So, we can infer that 2 o'clock is when something happens that causes people to cancel their orders.</p>", unsafe_allow_html=True)
 
 if not filtered_df.empty:
     cancel_metrics = calculate_cancellation_metrics(filtered_df)
@@ -1059,7 +968,6 @@ if not filtered_df.empty:
         col1, col2 = st.columns([1, 2])
 
         with col1:
-            # Cancellation rate summary
             cancel_rate = cancel_metrics['total_rate']
             cancel_color = COLORS['diverging_neg'] if cancel_rate > 10 else COLORS['primary'] if cancel_rate > 5 else COLORS['diverging_pos']
 
@@ -1084,7 +992,6 @@ if not filtered_df.empty:
             """, unsafe_allow_html=True)
 
         with col2:
-            # Cancellation rate by hour
             fig_cancel = go.Figure()
 
             fig_cancel.add_trace(go.Bar(
@@ -1111,7 +1018,6 @@ if not filtered_df.empty:
 
             st.plotly_chart(fig_cancel, use_container_width=True)
 
-        # High cancellation items
         if not cancel_metrics['by_item'].empty:
             st.markdown("<h4 style='margin-top: 2rem;'>Items with Highest Cancellation Rates</h4>", unsafe_allow_html=True)
 
@@ -1138,7 +1044,6 @@ if not filtered_df.empty:
 
             st.plotly_chart(fig_item_cancel, use_container_width=True)
 
-        # Cancellation insight
         peak_cancel_hour = cancel_metrics['hourly'].loc[cancel_metrics['hourly']['cancel_rate'].idxmax(), 'hour']
         peak_cancel_rate = cancel_metrics['hourly'].loc[cancel_metrics['hourly']['cancel_rate'].idxmax(), 'cancel_rate']
 
@@ -1156,6 +1061,8 @@ if not filtered_df.empty:
 else:
     st.info("No data available for cancellation analysis.")
 
+st.markdown("<p class='narrative-text'>Here the item with the highest cancellation rate was Kadai chicken with a whopping 34.1% of its total orders cancelled. Following it is the Mini Chocolate Doughnut which coincidentally was also one of the least ordered items, making it a top contender for items to be discontinued.</p>", unsafe_allow_html=True)
+
 # Revenue Concentration Analysis
 st.markdown("<div class='section-header'><h2>9. Revenue Concentration & Customer Value Distribution</h2></div>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle'>Understanding revenue dependency and customer segmentation</p>", unsafe_allow_html=True)
@@ -1166,7 +1073,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
     if concentration_data:
         gini = concentration_data['gini']
 
-        # Gini interpretation
         if gini < 0.3:
             gini_status = "very low concentration (highly egalitarian)"
             gini_color = COLORS['diverging_pos']
@@ -1187,7 +1093,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
         col1, col2 = st.columns([1, 2])
 
         with col1:
-            # Gini coefficient and key metrics
             st.markdown(f"""
             <div class='metric-card'>
             <h4 style='color: {COLORS['primary']}; margin-top: 0;'>Concentration Metrics</h4>
@@ -1221,12 +1126,10 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
             """, unsafe_allow_html=True)
 
         with col2:
-            # Lorenz Curve
             lorenz_data = concentration_data['lorenz_data']
 
             fig_lorenz = go.Figure()
 
-            # Equality line (45-degree line)
             fig_lorenz.add_trace(go.Scatter(
                 x=[0, 100],
                 y=[0, 100],
@@ -1236,7 +1139,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 showlegend=True
             ))
 
-            # Lorenz curve
             fig_lorenz.add_trace(go.Scatter(
                 x=np.concatenate([[0], lorenz_data['cumulative_customers'].values]),
                 y=np.concatenate([[0], lorenz_data['cumulative_revenue'].values]),
@@ -1247,7 +1149,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
                 fillcolor='rgba(15, 127, 152, 0.2)'
             ))
 
-            # Add reference points
             fig_lorenz.add_annotation(
                 x=10, y=concentration_data['top_10_contribution'],
                 text=f"Top 10%: {concentration_data['top_10_contribution']:.1f}%",
@@ -1275,13 +1176,11 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
 
             st.plotly_chart(fig_lorenz, use_container_width=True)
 
-        # Customer tier distribution
         st.markdown("<h4 style='margin-top: 2rem;'>Customer Value Segmentation</h4>", unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
 
         with col1:
-            # Tier distribution by count
             tier_stats = concentration_data['tier_stats']
 
             fig_tier_count = go.Figure()
@@ -1308,7 +1207,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
             st.plotly_chart(fig_tier_count, use_container_width=True)
 
         with col2:
-            # Tier contribution to revenue
             fig_tier_revenue = go.Figure()
             fig_tier_revenue.add_trace(go.Bar(
                 x=tier_stats['tier'],
@@ -1332,7 +1230,6 @@ if not filtered_df.empty and 'user_wallet_id' in filtered_df.columns:
 
             st.plotly_chart(fig_tier_revenue, use_container_width=True)
 
-        # Concentration insight
         pareto_ratio = concentration_data['top_20_contribution']
 
         st.markdown(f"""
@@ -1398,9 +1295,19 @@ with rec_col4:
     <div class='metric-card'>
     <h4 style='color: {COLORS['accent']}; margin-top: 0;'>Customer Retention</h4>
     <ul style='font-size: 14px;'>
-        <li>Implement loyalty rewards program</li>
+        <li>Implement VIP program for high-value customers</li>
         <li>Target churned customers with re-engagement offers</li>
-        <li>Reduce cancellations through inventory visibility</li>
+        <li>Upgrade medium-value customers through loyalty rewards</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
+
+# Footer
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #6c757d; font-size: 12px; padding: 2rem 0;'>
+    <p>Dashboard generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
+    <p>Analyzing {len(filtered_df):,} orders • NPR {filtered_df['total_price'].sum():,.0f} in revenue</p>
+    <p style='margin-top: 1rem;'>Analysis conducted by Data Society for Deerwalk Foods System</p>
+</div>
+""", unsafe_allow_html=True)
