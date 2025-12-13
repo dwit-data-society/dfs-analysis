@@ -105,35 +105,35 @@ def load_data():
         # Read entire file at once
         with open(DATA_PATH, 'r', encoding='utf-8-sig') as f:
             content = f.read()
-        
+
         # Split by newline
         lines = content.split('\n')
-        
+
         # Parse header
         header_line = lines[0].strip()
         if header_line.startswith('"') and header_line.endswith('"'):
             header_line = header_line[1:-1]
         header_line = header_line.replace('""', '"')
         columns = [col.strip().replace('"', '') for col in header_line.split(';')]
-        
+
         # Batch parse data: split all non-header lines at once
         data_lines = [l.strip() for l in lines[1:] if l.strip()]
-        
+
         data = []
         for line in data_lines:
             if line.startswith('"') and line.endswith('"'):
                 line = line[1:-1]
             line = line.replace('""', '"')
-            
+
             # Fast split on semicolon
             values = [v.strip().replace('"', '') for v in line.split(';')]
             if len(values) == len(columns):
                 data.append(values)
-        
+
         # Create DataFrame in one go (faster than row-by-row)
         orders = pd.DataFrame(data, columns=columns)
         del data  # Free memory immediately
-        
+
     except Exception as e:
         st.error(f"Error parsing CSV: {e}")
         st.stop()
@@ -182,10 +182,10 @@ def load_data():
 
     return orders
 
-@st.cache_resource
+@st.cache_data
 def calculate_churn_rate(df, period_days=30):
     if df.empty or 'user_wallet_id' not in df.columns:
-        return None, None, None
+        return None, None, None, None
 
     max_date = df['created_at'].max()
     period_start = max_date - timedelta(days=period_days)
@@ -199,13 +199,13 @@ def calculate_churn_rate(df, period_days=30):
     lost_customers = active_before - active_during
     churn_rate = (len(lost_customers) / len(active_before) * 100) if len(active_before) > 0 else 0
 
-    customer_activity = df.groupby(df['created_at'].dt.to_period('W'))['user_wallet_id'].nunique().reset_index()
+    customer_activity = df.groupby(df['created_at'].dt.to_period('W'), observed=True)['user_wallet_id'].nunique().reset_index()
     customer_activity.columns = ['week', 'active_customers']
     customer_activity['week'] = customer_activity['week'].astype(str)
 
     return churn_rate, len(lost_customers), len(active_before), customer_activity
 
-@st.cache_resource
+@st.cache_data
 def forecast_revenue(df, forecast_days=30):
     if df.empty or len(df) < 14:
         return None, None
@@ -235,26 +235,27 @@ def forecast_revenue(df, forecast_days=30):
 
     return daily_rev, forecast_df
 
-@st.cache_resource
+@st.cache_data
 def calculate_cancellation_metrics(df):
     if df.empty:
         return None
 
     cancelled_statuses = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'Missed']
-    df['is_cancelled'] = df['status'].isin(cancelled_statuses)
+    df_copy = df.copy()
+    df_copy['is_cancelled'] = df_copy['status'].isin(cancelled_statuses)
 
-    total_orders = len(df)
-    cancelled_orders = df['is_cancelled'].sum()
+    total_orders = len(df_copy)
+    cancelled_orders = df_copy['is_cancelled'].sum()
     cancellation_rate = (cancelled_orders / total_orders * 100) if total_orders > 0 else 0
 
-    hourly_cancel = df.groupby('hour').agg({
+    hourly_cancel = df_copy.groupby('hour', observed=True).agg({
         'id': 'count',
         'is_cancelled': 'sum'
     }).reset_index()
     hourly_cancel.columns = ['hour', 'total', 'cancelled']
     hourly_cancel['cancel_rate'] = (hourly_cancel['cancelled'] / hourly_cancel['total'] * 100)
 
-    item_cancel = df.groupby('item_name').agg({
+    item_cancel = df_copy.groupby('item_name', observed=True).agg({
         'id': 'count',
         'is_cancelled': 'sum'
     }).reset_index()
@@ -270,7 +271,7 @@ def calculate_cancellation_metrics(df):
         'by_item': item_cancel
     }
 
-@st.cache_resource
+@st.cache_data
 def calculate_revenue_concentration(df):
     if df.empty or 'user_wallet_id' not in df.columns:
         return None
@@ -306,7 +307,7 @@ def calculate_revenue_concentration(df):
         labels=['Low Value', 'Medium Value', 'High Value', 'VIP']
     )
 
-    tier_stats = customer_revenue.groupby('tier').agg({
+    tier_stats = customer_revenue.groupby('tier', observed=True).agg({
         'customer_id': 'count',
         'revenue': 'sum'
     }).reset_index()
