@@ -100,23 +100,21 @@ COLORS = {
 # Load data with caching
 @st.cache_data
 def load_data():
-    # --- HANDLE MALFORMED CSV ---
+    """Load and preprocess orders data with optimized CSV parsing."""
     try:
-        with open(DATA_PATH, "r", encoding="utf-8-sig") as f:
+        with open(DATA_PATH, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
-
-        # Clean the first line (header)
+        
+        # Parse header: remove outer quotes, then unescape internal quotes
         header_line = lines[0].strip()
         if header_line.startswith('"') and header_line.endswith('"'):
-            header_line = header_line[1:-1]
-
-        # Split by semicolon and clean individual column names
-        columns = []
-        for col in header_line.split(';'):
-            clean_col = col.strip().replace('""', '').replace('"', '').replace("'", "").replace(',', '')
-            columns.append(clean_col)
-
-        # Parse data rows
+            header_line = header_line[1:-1]  # Remove outer quotes
+        header_line = header_line.replace('""', '"')  # Unescape internal quotes
+        
+        # Split by semicolon and clean column names
+        columns = [col.strip().replace('"', '') for col in header_line.split(';')]
+        
+        # Parse data rows efficiently using list comprehension
         data = []
         for line in lines[1:]:
             if not line.strip():
@@ -124,23 +122,25 @@ def load_data():
             line = line.strip()
             if line.startswith('"') and line.endswith('"'):
                 line = line[1:-1]
-
-            values = []
-            for val in line.split(';'):
-                clean_val = val.strip().replace('""', '"').replace('"', '')
-                values.append(clean_val)
-
+            line = line.replace('""', '"')  # Unescape internal quotes
+            
+            # Split and clean values
+            values = [val.strip().replace('"', '') for val in line.split(';')]
+            
             if len(values) == len(columns):
                 data.append(values)
-
+        
+        # Create DataFrame
         orders = pd.DataFrame(data, columns=columns)
-
+        
     except Exception as e:
         st.error(f"Error parsing CSV: {e}")
         st.stop()
 
+    # Replace NULL strings with NaN
     orders = orders.replace(['NULL', 'null', 'Null', 'None', 'none'], np.nan)
 
+    # Validate critical columns exist
     critical_columns = ['created_at', 'updated_at', 'deleted_at', 'item_name', 'status', 'total_price', 'quantity', 'id']
     for col in critical_columns:
         if col not in orders.columns:
@@ -149,16 +149,22 @@ def load_data():
             elif col == 'status':
                 orders[col] = 'Unknown'
             else:
-                st.error(f"Required column '{col}' not found in CSV")
+                st.error(f"Required column '{col}' not found in CSV. Available columns: {list(orders.columns)}")
                 st.stop()
 
+    # Remove deleted records early (reduces dataset size)
     orders = orders[orders['deleted_at'].isna()].copy()
+
+    # Type conversions
     orders['created_at'] = pd.to_datetime(orders['created_at'], errors='coerce')
     orders['updated_at'] = pd.to_datetime(orders['updated_at'], errors='coerce')
     orders['total_price'] = pd.to_numeric(orders['total_price'], errors='coerce')
     orders['quantity'] = pd.to_numeric(orders['quantity'], errors='coerce')
+
+    # Drop rows with missing critical data
     orders = orders.dropna(subset=['created_at', 'updated_at', 'total_price'])
 
+    # Compute derived columns (vectorized)
     orders['fulfillment_mins'] = (orders['updated_at'] - orders['created_at']).dt.total_seconds() / 60
     orders['date'] = orders['created_at'].dt.date
     orders['hour'] = orders['created_at'].dt.hour
@@ -166,12 +172,14 @@ def load_data():
     orders['month'] = orders['created_at'].dt.to_period('M').astype(str)
     orders['week'] = orders['created_at'].dt.to_period('W').astype(str)
 
-    orders['price_category'] = pd.cut(orders['total_price'],
-                                       bins=[0, 50, 100, 200, float('inf')],
-                                       labels=['Budget (<50)', 'Mid (50-100)', 'Premium (100-200)', 'Luxury (200+)'])
+    # Price categorization
+    orders['price_category'] = pd.cut(
+        orders['total_price'],
+        bins=[0, 50, 100, 200, float('inf')],
+        labels=['Budget (<50)', 'Mid (50-100)', 'Premium (100-200)', 'Luxury (200+)']
+    )
 
     return orders
-
 def calculate_churn_rate(df, period_days=30):
     if df.empty or 'user_wallet_id' not in df.columns:
         return None, None, None
