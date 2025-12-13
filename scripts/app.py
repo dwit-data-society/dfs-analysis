@@ -99,7 +99,6 @@ COLORS = {
 
 # Load data with caching
 @st.cache_data
-@st.cache_data
 def load_data():
     """Load and preprocess orders data—ultra-optimized for Streamlit Cloud."""
     try:
@@ -120,8 +119,6 @@ def load_data():
         # Batch parse data: split all non-header lines at once
         data_lines = [l.strip() for l in lines[1:] if l.strip()]
         
-        # Use regex for fast quote removal
-        import re
         data = []
         for line in data_lines:
             if line.startswith('"') and line.endswith('"'):
@@ -185,6 +182,7 @@ def load_data():
 
     return orders
 
+@st.cache_resource
 def calculate_churn_rate(df, period_days=30):
     if df.empty or 'user_wallet_id' not in df.columns:
         return None, None, None
@@ -207,6 +205,7 @@ def calculate_churn_rate(df, period_days=30):
 
     return churn_rate, len(lost_customers), len(active_before), customer_activity
 
+@st.cache_resource
 def forecast_revenue(df, forecast_days=30):
     if df.empty or len(df) < 14:
         return None, None
@@ -236,6 +235,7 @@ def forecast_revenue(df, forecast_days=30):
 
     return daily_rev, forecast_df
 
+@st.cache_resource
 def calculate_cancellation_metrics(df):
     if df.empty:
         return None
@@ -270,6 +270,7 @@ def calculate_cancellation_metrics(df):
         'by_item': item_cancel
     }
 
+@st.cache_resource
 def calculate_revenue_concentration(df):
     if df.empty or 'user_wallet_id' not in df.columns:
         return None
