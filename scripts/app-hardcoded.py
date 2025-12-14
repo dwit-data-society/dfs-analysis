@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import numpy as np
 
 # Import all hardcoded values
-from hardcoded import *
+from hardcoded_values import *
+from hardcoded_additions import *
 
 # Page config
 st.set_page_config(page_title="Deerwalk Food System Insights", layout="wide", initial_sidebar_state="collapsed")
@@ -109,7 +110,9 @@ st.markdown("<p class='subtitle'>Speed and reliability define customer satisfact
 col1, col2 = st.columns(2)
 with col1:
     fig_fulfill = go.Figure()
-    fig_fulfill.add_trace(go.Histogram(x=FULFILLMENT_TIMES_SAMPLE, nbinsx=30, marker=dict(color=COLORS['primary'], line=dict(color='white', width=1))))
+    # Use the histogram data directly
+    bin_centers = [(FULFILLMENT_HIST_BINS[i] + FULFILLMENT_HIST_BINS[i+1]) / 2 for i in range(len(FULFILLMENT_HIST_BINS)-1)]
+    fig_fulfill.add_trace(go.Bar(x=bin_centers, y=FULFILLMENT_HIST_COUNTS, marker=dict(color=COLORS['primary'], line=dict(color='white', width=1))))
     fig_fulfill.add_vline(x=MEDIAN_FULFILLMENT, line_dash="dash", line_color=COLORS['dark'], annotation_text=f"Median: {MEDIAN_FULFILLMENT:.1f} min")
     fig_fulfill.update_layout(title="Order Fulfillment Time Distribution", xaxis_title="Minutes", yaxis_title="Number of Orders", height=350, plot_bgcolor='white', paper_bgcolor='white', font=dict(family='Roboto', size=12, color=COLORS['neutral']), xaxis=dict(showgrid=True, gridcolor='#e9ecef'), yaxis=dict(showgrid=True, gridcolor='#e9ecef'))
     st.plotly_chart(fig_fulfill, use_container_width=True)
@@ -244,7 +247,7 @@ with col1:
 with col2:
     fig_lorenz = go.Figure()
     fig_lorenz.add_trace(go.Scatter(x=[0, 100], y=[0, 100], mode='lines', name='Perfect Equality', line=dict(color='#dee2e6', width=2, dash='dash'), showlegend=True))
-    fig_lorenz.add_trace(go.Scatter(x=np.concatenate([[0], LORENZ_CUSTOMERS]), y=np.concatenate([[0], LORENZ_REVENUE]), mode='lines', name='Actual Distribution', line=dict(color=COLORS['primary'], width=3), fill='tonexty', fillcolor='rgba(15, 127, 152, 0.2)'))
+    fig_lorenz.add_trace(go.Scatter(x=np.concatenate([[0], LORENZ_CUSTOMERS_FULL]), y=np.concatenate([[0], LORENZ_REVENUE_FULL]), mode='lines', name='Actual Distribution', line=dict(color=COLORS['primary'], width=3), fill='tonexty', fillcolor='rgba(15, 127, 152, 0.2)'))
     fig_lorenz.add_annotation(x=10, y=TOP_10_CONTRIBUTION, text=f"Top 10%: {TOP_10_CONTRIBUTION:.1f}%", showarrow=True, arrowhead=2, arrowcolor=COLORS['dark'], font=dict(size=11, color=COLORS['dark']), bgcolor='white', bordercolor=COLORS['dark'], borderwidth=1)
     fig_lorenz.update_layout(title="Lorenz Curve - Revenue Distribution", xaxis_title="Cumulative % of Customers", yaxis_title="Cumulative % of Revenue", height=400, plot_bgcolor='white', paper_bgcolor='white', font=dict(family='Roboto', size=12, color=COLORS['neutral']), xaxis=dict(showgrid=True, gridcolor='#e9ecef', range=[0, 100]), yaxis=dict(showgrid=True, gridcolor='#e9ecef', range=[0, 100]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig_lorenz, use_container_width=True)

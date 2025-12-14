@@ -386,3 +386,28 @@ print()
 print("="*80)
 print("# END OF HARDCODED VALUES")
 print("="*80)
+# ===== FULFILLMENT TIME HISTOGRAM DATA =====
+delivered_orders = df[df['status'] == 'Delivered']
+hist_counts, hist_bins = np.histogram(delivered_orders['fulfillment_mins'], bins=30)
+
+# ===== LORENZ CURVE COMPLETE DATA =====
+customer_revenue = df.groupby('user_wallet_id')['total_price'].sum().reset_index()
+customer_revenue = customer_revenue.sort_values('total_price', ascending=True)
+customer_revenue['cumulative_customers'] = np.arange(1, len(customer_revenue) + 1) / len(customer_revenue) * 100
+customer_revenue['cumulative_revenue'] = customer_revenue['total_price'].cumsum() / customer_revenue['total_price'].sum() * 100
+
+# Sample every Nth point to get ~200-300 points for smooth curve
+step = max(1, len(customer_revenue) // 200)
+lorenz_customers = customer_revenue['cumulative_customers'].iloc[::step].tolist()
+lorenz_revenue = customer_revenue['cumulative_revenue'].iloc[::step].tolist()
+
+# Write to file
+with open('hardcoded_additions.py', 'w') as f:
+    f.write("\n# ===== FULFILLMENT HISTOGRAM =====\n")
+    f.write(f"FULFILLMENT_HIST_BINS = {hist_bins.tolist()}\n")
+    f.write(f"FULFILLMENT_HIST_COUNTS = {hist_counts.tolist()}\n")
+    f.write("\n# ===== LORENZ CURVE COMPLETE =====\n")
+    f.write(f"LORENZ_CUSTOMERS_FULL = {lorenz_customers}\n")
+    f.write(f"LORENZ_REVENUE_FULL = {lorenz_revenue}\n")
+
+print("Values written to hardcoded_additions.py")
