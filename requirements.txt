@@ -11,11 +11,11 @@ jsonschema==4.25.1
 jsonschema-specifications==2025.9.1
 MarkupSafe==3.0.3
 narwhals==2.13.0
-numpy==2.0.2
+numpy>=2.0.2
 packaging==25.0
-pandas==2.3.3
+pandas>=2.3.3
 pillow==11.3.0
-plotly==6.5.0
+plotly>=6.5.0
 protobuf==6.33.2
 pyarrow==21.0.0
 pydeck==0.9.1
@@ -25,7 +25,7 @@ referencing==0.36.2
 requests==2.32.5
 rpds-py==0.27.1
 six==1.17.0
-streamlit==1.50.0
+streamlit==1.50.0,<2
 tenacity==9.1.2
 toml==0.10.2
 tornado==6.5.2
