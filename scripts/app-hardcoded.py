@@ -15,12 +15,12 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Merriweather:wght@300;400;700&display=swap');
     html, body, [class*="css"] { font-family: 'Roboto', sans-serif; }
-    h1, h2, h3 { font-family: 'Merriweather', serif; font-weight: 700; color: #010003; }
-    .main { background-color: #ffffff; }
+    h1, h2, h3 { font-family: 'Merriweather', serif; font-weight: 700; color: var(--text-color); }
+	.main { background-color: var(--background-color) }
     .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 1200px; }
-    .stMarkdown { font-size: 16px; line-height: 1.7; color: #2c3e50; }
-    .metric-card { background: #f8f9fa; padding: 1.5rem; border-radius: 4px; border-left: 4px solid #0F7F98; margin: 1rem 0; }
-    .insight-box { background: #f0f7f8; padding: 1.2rem; border-radius: 4px; border-left: 3px solid #498F8C; margin: 1.5rem 0; font-style: italic; color: #0E4E4A; }
+    .stMarkdown { font-size: 16px; line-height: 1.7; color: var(--text-color); }
+    .metric-card { background: rgba(15, 127, 152, 0.08); padding: 1.5rem; border-radius: 4px; border-left: 4px solid #0F7F98; margin: 1rem 0; }
+    .insight-box { background: rbga(73, 143, 140, 0.15); padding: 1.2rem; border-radius: 4px; border-left: 3px solid #498F8C; margin: 1.5rem 0; font-style: italic; color: var(--text-color); }
     .section-header { border-bottom: 2px solid #0F7F98; padding-bottom: 0.5rem; margin-top: 3rem; margin-bottom: 1.5rem; }
     .subtitle { color: #6c757d; font-size: 14px; font-weight: 300; margin-top: -10px; }
     .narrative-text { color: #2c3e50; font-size: 16px; line-height: 1.8; text-align: justify; margin: 1.5rem 0; }
@@ -57,7 +57,22 @@ st.markdown("<p class='subtitle'>Understanding revenue patterns reveals peak per
 fig_revenue = go.Figure()
 fig_revenue.add_trace(go.Scatter(x=DAILY_REVENUE_DATES, y=DAILY_REVENUE_VALUES, mode='lines', name='Daily Revenue', line=dict(color=COLORS['primary'], width=2.5), fill='tozeroy', fillcolor='rgba(15, 127, 152, 0.1)'))
 fig_revenue.add_trace(go.Scatter(x=DAILY_REVENUE_DATES, y=DAILY_REVENUE_MA7, mode='lines', name='7-Day Average', line=dict(color=COLORS['dark'], width=2, dash='dash')))
-fig_revenue.update_layout(title="Daily Revenue Trends", xaxis_title="", yaxis_title="Revenue (NPR)", hovermode='x unified', plot_bgcolor='white', paper_bgcolor='white', font=dict(family='Roboto', size=12, color=COLORS['neutral']), height=400, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(showgrid=True, gridcolor='#e9ecef', gridwidth=0.5), yaxis=dict(showgrid=True, gridcolor='#e9ecef', gridwidth=0.5))
+fig_revenue.update_layout(
+    title="Daily Revenue Trends",
+    xaxis_title="",
+    yaxis_title="Revenue (NPR)",
+    hovermode='x unified',
+    font=dict(family='Roboto', size=12),
+    height=400,
+    showlegend=True,
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    )
+)
 st.plotly_chart(fig_revenue, use_container_width=True)
 
 growth_color = COLORS['diverging_pos'] if GROWTH_RATE > 0 else COLORS['diverging_neg']
